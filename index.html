@@ -863,5 +863,179 @@ contributing to mineral processing, innovation, and industrial development.
 }
 
     </style>
+<script>
+(function(){
+  const canvas = document.getElementById('grain-bg');
+  if (!canvas) return;
+
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const BASE = [27, 38, 52];
+  const HOT = [240, 162, 75];
+  const GRAINS = 38;
+
+  let W, H, cols, rows, img, data;
+  let seeds = [];
+  let pointer = { x: -9, y: -9, heat: 0 };
+  let raf, last = 0;
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+
+    const target = W < 700 ? 100 : 160;
+    cols = target;
+    rows = Math.max(60, Math.round(target * H / W));
+
+    canvas.width = cols;
+    canvas.height = rows;
+
+    img = ctx.createImageData(cols, rows);
+    data = img.data;
+
+    if (reduceMotion) draw(0);
+  }
+
+  function makeSeeds() {
+    seeds = [];
+
+    for (let i = 0; i < GRAINS; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 0.015 + Math.random() * 0.035;
+
+      seeds.push({
+        x: Math.random(),
+        y: Math.random(),
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        tone: (Math.random() - 0.5) * 0.55,
+        ang: Math.random() * Math.PI,
+        freq: 30 + Math.random() * 60
+      });
+    }
+  }
+
+  function step(dt) {
+    for (const s of seeds) {
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+
+      if (s.x < -0.1 || s.x > 1.1) s.vx *= -1;
+      if (s.y < -0.1 || s.y > 1.1) s.vy *= -1;
+    }
+  }
+
+  function draw(t) {
+    const aspect = cols / rows;
+    const n = seeds.length;
+
+    const px = pointer.x;
+    const py = pointer.y;
+    const ph = pointer.heat;
+
+    const wx = 0.5 + 0.35 * Math.sin(t * 0.00013);
+    const wy = 0.5 + 0.3 * Math.cos(t * 0.00011);
+
+    let p = 0;
+
+    for (let j = 0; j < rows; j++) {
+      const y = j / rows;
+
+      for (let i = 0; i < cols; i++) {
+        const x = i / cols;
+
+        let d1 = 9, d2 = 9, k = -1;
+
+        for (let s = 0; s < n; s++) {
+          const sd = seeds[s];
+          const dx = (x - sd.x) * aspect;
+          const dy = y - sd.y;
+          const d = dx * dx + dy * dy;
+
+          if (d < d1) {
+            d2 = d1;
+            d1 = d;
+            k = s;
+          } else if (d < d2) {
+            d2 = d;
+          }
+        }
+
+        const g = seeds[k];
+
+        const gap = Math.sqrt(d2) - Math.sqrt(d1);
+        let edge = 1 - Math.min(gap / 0.012, 1);
+        edge *= edge;
+
+        const stripe = Math.sin(
+          (x * aspect * Math.cos(g.ang) + y * Math.sin(g.ang)) * g.freq
+        ) * 0.035;
+
+        const lum = 1 + g.tone + stripe;
+
+        const hx = (x - px) * aspect;
+        const hy = y - py;
+        const heatP = ph * Math.exp(-(hx * hx + hy * hy) / 0.02);
+
+        const ix = (x - wx) * aspect;
+        const iy = y - wy;
+        const heatI = 0.35 * Math.exp(-(ix * ix + iy * iy) / 0.09);
+
+        const heat = Math.min(1, heatP + heatI);
+        const glow = Math.min(1, edge * (0.25 + 1.4 * heat) + heat * 0.12);
+
+        data[p++] = BASE[0] * lum * (1 - glow) + HOT[0] * glow;
+        data[p++] = BASE[1] * lum * (1 - glow) + HOT[1] * glow;
+        data[p++] = BASE[2] * lum * (1 - glow) + HOT[2] * glow;
+        data[p++] = 255;
+      }
+    }
+
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    step(dt);
+    pointer.heat *= 0.985;
+    draw(now);
+
+    raf = requestAnimationFrame(loop);
+  }
+
+  function setPointer(e) {
+    pointer.x = e.clientX / W;
+    pointer.y = e.clientY / H;
+    pointer.heat = 1;
+  }
+
+  makeSeeds();
+  resize();
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('pointermove', setPointer, { passive: true });
+
+  if (!reduceMotion) {
+    requestAnimationFrame(t => {
+      last = t;
+      loop(t);
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        cancelAnimationFrame(raf);
+      } else {
+        requestAnimationFrame(t => {
+          last = t;
+          loop(t);
+        });
+      }
+    });
+  }
+})();
+</script>
 </body>
   </html>
